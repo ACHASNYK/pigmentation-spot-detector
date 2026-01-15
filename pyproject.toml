@@ -1,0 +1,28 @@
+[project]
+name = "pigmentation-detector"
+version = "0.1.0"
+description = "POC for pigmentation spot detection and classification on human face skin"
+authors = [
+    {name = "Anton Chesnokov",email = "anton.c@embedd.it"}
+]
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "streamlit>=1.40",
+    "opencv-python>=4.10",
+    "mediapipe>=0.10",
+    "numpy>=2.0",
+    "Pillow>=11.0",
+    "scikit-image>=0.22",
+    "plotly>=5.18",
+    "torch>=2.0",
+    "onnxruntime>=1.16",
+    "insightface>=0.7",
+    "python-dotenv>=1.0",
+    "anthropic>=0.40",
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
