@@ -4,7 +4,6 @@ Creates a head mesh with photo textures mapped from front/left/right views.
 """
 
 import numpy as np
-import pyvista as pv
 from PIL import Image
 from dataclasses import dataclass
 from enum import Enum
@@ -19,7 +18,7 @@ def create_head_mesh(
     a: float = 0.85,  # width (ear to ear)
     b: float = 1.0,   # depth (front to back)
     c: float = 1.3,   # height (chin to top)
-) -> pv.PolyData:
+):
     """
     Create an ellipsoid head mesh with UV coordinates for texture mapping.
 
@@ -27,7 +26,11 @@ def create_head_mesh(
     - X axis: left-right (ears)
     - Y axis: front-back (nose direction is +Y)
     - Z axis: up-down (top of head is +Z)
+
+    Requires pyvista to be installed.
     """
+    import pyvista as pv
+
     # Create parametric ellipsoid
     u = np.linspace(0, 2 * np.pi, resolution)
     v = np.linspace(0, np.pi, resolution)
@@ -319,12 +322,15 @@ def create_pyvista_textured_head(
     right_img: np.ndarray,
     spots_3d: list[Spot3D],
     show_spots_on_texture: bool = True,
-) -> tuple[pv.PolyData, pv.Texture]:
+):
     """
     Create a PyVista head mesh with photo texture and spots.
 
     Returns the mesh and texture objects for rendering.
+    Requires pyvista to be installed.
     """
+    import pyvista as pv
+
     # Create head mesh
     mesh = create_head_mesh(resolution=60)
 
@@ -346,13 +352,16 @@ def create_pyvista_textured_head(
 
 
 def render_textured_head_to_html(
-    mesh: pv.PolyData,
-    texture: pv.Texture,
+    mesh,
+    texture,
     spots_3d: list[Spot3D] = None,
 ) -> str:
     """
     Render the textured head to an HTML string for embedding in Streamlit.
+    Requires pyvista to be installed.
     """
+    import pyvista as pv
+
     # Create plotter
     plotter = pv.Plotter(off_screen=True)
 
