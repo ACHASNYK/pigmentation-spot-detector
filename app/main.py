@@ -9,6 +9,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import streamlit as st
+
+# Load secrets from Streamlit Cloud if available
+try:
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        os.environ["ANTHROPIC_API_KEY"] = st.secrets["ANTHROPIC_API_KEY"]
+except Exception:
+    pass  # Not running on Streamlit Cloud or no secrets configured
 import json
 import numpy as np
 import plotly.express as px
