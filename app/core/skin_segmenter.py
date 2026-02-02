@@ -126,13 +126,16 @@ class SkinSegmenter:
             # For TOP points: EXTEND upward at center, CONTRACT at sides
             if rel_y < 0.25:  # Top 25% of face (forehead area)
                 # Extension factor: positive at center, becomes contraction at sides
-                # At center (abs_rel_x=0): extend upward by 30%
-                # At sides (abs_rel_x=1): contract by 10%
-                if abs_rel_x < 0.65:  # Center region - EXTEND upward (wider coverage)
-                    extension = 0.30 * (1 - abs_rel_x / 0.65)  # 30% at center, 0% at 0.65
+                # Use a smoother curve for more uniform/rounded forehead shape
+                # At center (abs_rel_x=0): extend upward by 18%
+                # Gradually decrease to 0% at sides, then contract at extreme edges
+                if abs_rel_x < 0.75:  # Center-wide region - EXTEND upward (rounded forehead)
+                    # Use squared falloff for more uniform extension (less triangular)
+                    falloff = (1 - abs_rel_x / 0.75) ** 1.5  # Smoother curve
+                    extension = 0.18 * falloff  # 18% at center, gradual decrease
                     adjusted_points[i, 1] = py - extension * face_height  # Move UP
-                else:  # Side region - CONTRACT to avoid hair
-                    contraction = 0.08 * (abs_rel_x - 0.65) / 0.35  # 0% at 0.65, 8% at edge
+                else:  # Extreme side region - CONTRACT to avoid hair
+                    contraction = 0.08 * (abs_rel_x - 0.75) / 0.25  # 0% at 0.75, 8% at edge
                     dx = center_x - px
                     dy = center_y - py
                     adjusted_points[i, 0] = px + dx * contraction
@@ -304,8 +307,28 @@ class SkinSegmenter:
         # 3. Very dark value in HSV (catches dark hair that might have odd LAB values)
         very_dark_v = V_channel < 70
 
+        # 4. Position-aware hair detection for TOP region (forehead hairline)
+        # Be more aggressive at detecting hair at the top of the face mask
+        y_coords, x_coords = np.where(face_pixels)
+        if len(y_coords) > 0:
+            y_min_face = y_coords.min()
+            y_max_face = y_coords.max()
+            face_height_pixels = y_max_face - y_min_face
+
+            # Create mask for top 20% of face region
+            top_region_mask = np.zeros_like(face_pixels)
+            top_threshold_y = y_min_face + int(0.20 * face_height_pixels)
+            top_region_mask[y_coords < top_threshold_y, x_coords[y_coords < top_threshold_y]] = True
+
+            # In top region, use more lenient thresholds
+            # Detect anything darker than mean or with different color
+            top_region = top_region_mask & face_pixels
+            relaxed_dark = (L_channel < mean_L - 0.5 * std_L) & top_region
+        else:
+            relaxed_dark = np.zeros_like(face_pixels)
+
         # Combine hair detection criteria
-        potential_hair = (dark_regions | gray_hair | very_dark_v) & face_pixels
+        potential_hair = (dark_regions | gray_hair | very_dark_v | relaxed_dark) & face_pixels
 
         # Create initial hair mask
         hair_mask[potential_hair] = 255
