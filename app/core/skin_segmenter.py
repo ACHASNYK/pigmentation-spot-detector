@@ -107,56 +107,74 @@ class SkinSegmenter:
         face_height = y_max - y_min
         face_width = x_max - x_min
 
-        # ADJUST the face oval based on position:
-        # - Top-CENTER (forehead): EXTEND UPWARD to capture more forehead skin
-        # - Top-SIDES (temples/hairline): CONTRACT to avoid hair
-        # - Sides (sideburns): CONTRACT moderately
-        # - Bottom (chin): minimal change
+        # NEW APPROACH: Create flat-top forehead instead of triangular extension
+        # Separate top points from rest to create proper forehead region
 
-        adjusted_points = face_points.copy()
+        adjusted_points = []
+        top_points = []
 
-        for i in range(len(adjusted_points)):
-            px, py = adjusted_points[i]
+        for i in range(len(face_points)):
+            px, py = face_points[i]
 
             # Calculate relative position in face
             rel_y = (py - y_min) / face_height  # 0 = top, 1 = bottom
             rel_x = (px - center_x) / (face_width / 2)  # -1 = left edge, 0 = center, 1 = right edge
             abs_rel_x = abs(rel_x)  # 0 at center, 1 at edges
 
-            # For TOP points: EXTEND upward at center, CONTRACT at sides
+            # For TOP points: collect separately for forehead reconstruction
             if rel_y < 0.25:  # Top 25% of face (forehead area)
-                # Extension factor: positive at center, becomes contraction at sides
-                # Use a smoother curve for more uniform/rounded forehead shape
-                # At center (abs_rel_x=0): extend upward by 18%
-                # Gradually decrease to 0% at sides, then contract at extreme edges
-                if abs_rel_x < 0.75:  # Center-wide region - EXTEND upward (rounded forehead)
-                    # Use squared falloff for more uniform extension (less triangular)
-                    falloff = (1 - abs_rel_x / 0.75) ** 1.5  # Smoother curve
-                    extension = 0.18 * falloff  # 18% at center, gradual decrease
-                    adjusted_points[i, 1] = py - extension * face_height  # Move UP
-                else:  # Extreme side region - CONTRACT to avoid hair
-                    contraction = 0.08 * (abs_rel_x - 0.75) / 0.25  # 0% at 0.75, 8% at edge
-                    dx = center_x - px
-                    dy = center_y - py
-                    adjusted_points[i, 0] = px + dx * contraction
-                    adjusted_points[i, 1] = py + dy * contraction
+                top_points.append((px, py, abs_rel_x))
 
             # For MIDDLE points: CONTRACT sides to avoid hair
             elif rel_y < 0.70:  # Middle section (eyes to cheeks)
-                # Contract based on how far from center (sides have more hair)
                 side_contraction = abs_rel_x * 0.10  # Up to 10% at edges
                 dx = center_x - px
                 dy = center_y - py
-                adjusted_points[i, 0] = px + dx * side_contraction
-                adjusted_points[i, 1] = py + dy * side_contraction
+                new_x = px + dx * side_contraction
+                new_y = py + dy * side_contraction
+                adjusted_points.append([new_x, new_y])
 
             # For BOTTOM points: minimal adjustment (chin/jaw - no hair)
             else:
-                contraction = 0.02  # Very slight contraction
+                contraction = 0.02
                 dx = center_x - px
                 dy = center_y - py
-                adjusted_points[i, 0] = px + dx * contraction
-                adjusted_points[i, 1] = py + dy * contraction
+                new_x = px + dx * contraction
+                new_y = py + dy * contraction
+                adjusted_points.append([new_x, new_y])
+
+        # Process TOP points to create flat forehead
+        if top_points:
+            # Find the highest point (minimum y) in the center region
+            center_top_points = [(px, py) for px, py, abs_rx in top_points if abs_rx < 0.5]
+            if center_top_points:
+                # Extend upward from the topmost center point
+                min_y = min(py for _, py in center_top_points)
+                forehead_top_y = min_y - 0.20 * face_height  # Extend 20% upward
+                forehead_top_y = max(0, forehead_top_y)  # Don't go above image
+            else:
+                # Fallback if no center points
+                min_y = min(py for _, py, _ in top_points)
+                forehead_top_y = min_y - 0.15 * face_height
+                forehead_top_y = max(0, forehead_top_y)
+
+            # Create flat top line and side transitions
+            for px, py, abs_rel_x in sorted(top_points, key=lambda p: p[0]):  # Sort by x
+                if abs_rel_x < 0.70:  # Central/mid forehead - create flat top
+                    # Gradually transition from top edge to flat line
+                    blend = abs_rel_x / 0.70  # 0 at center, 1 at 0.70
+                    new_y = forehead_top_y * (1 - blend) + py * blend
+                    adjusted_points.append([px, new_y])
+                else:  # Sides - contract inward to avoid hair
+                    contraction = 0.08
+                    dx = center_x - px
+                    dy = center_y - py
+                    new_x = px + dx * contraction
+                    new_y = py + dy * contraction
+                    adjusted_points.append([new_x, new_y])
+
+        # Convert to numpy array
+        adjusted_points = np.array(adjusted_points, dtype=np.float64)
 
         # Ensure points stay within image bounds
         adjusted_points[:, 0] = np.clip(adjusted_points[:, 0], 0, w - 1)
