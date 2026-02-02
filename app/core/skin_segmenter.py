@@ -318,7 +318,12 @@ class SkinSegmenter:
             # Create mask for top 20% of face region
             top_region_mask = np.zeros_like(face_pixels)
             top_threshold_y = y_min_face + int(0.20 * face_height_pixels)
-            top_region_mask[y_coords < top_threshold_y, x_coords[y_coords < top_threshold_y]] = True
+
+            # Filter coordinates for top region
+            top_filter = y_coords < top_threshold_y
+            y_top = y_coords[top_filter]
+            x_top = x_coords[top_filter]
+            top_region_mask[y_top, x_top] = True
 
             # In top region, use more lenient thresholds
             # Detect anything darker than mean or with different color
