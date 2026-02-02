@@ -1,7 +1,7 @@
 streamlit>=1.40
-opencv-python-headless>=4.10
+opencv-python-headless==4.8.1.78
 mediapipe>=0.10
-numpy>=2.0
+numpy<2.0
 Pillow>=11.0
 scikit-image>=0.22
 plotly>=5.18
