@@ -126,13 +126,13 @@ class SkinSegmenter:
             # For TOP points: EXTEND upward at center, CONTRACT at sides
             if rel_y < 0.25:  # Top 25% of face (forehead area)
                 # Extension factor: positive at center, becomes contraction at sides
-                # At center (abs_rel_x=0): extend upward by 15%
+                # At center (abs_rel_x=0): extend upward by 30%
                 # At sides (abs_rel_x=1): contract by 10%
-                if abs_rel_x < 0.4:  # Center region - EXTEND upward
-                    extension = 0.15 * (1 - abs_rel_x / 0.4)  # 15% at center, 0% at 0.4
+                if abs_rel_x < 0.65:  # Center region - EXTEND upward (wider coverage)
+                    extension = 0.30 * (1 - abs_rel_x / 0.65)  # 30% at center, 0% at 0.65
                     adjusted_points[i, 1] = py - extension * face_height  # Move UP
                 else:  # Side region - CONTRACT to avoid hair
-                    contraction = 0.08 * (abs_rel_x - 0.4) / 0.6  # 0% at 0.4, 8% at edge
+                    contraction = 0.08 * (abs_rel_x - 0.65) / 0.35  # 0% at 0.65, 8% at edge
                     dx = center_x - px
                     dy = center_y - py
                     adjusted_points[i, 0] = px + dx * contraction
