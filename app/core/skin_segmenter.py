@@ -64,10 +64,10 @@ class SkinSegmenter:
         skin_mask = cv2.bitwise_and(skin_mask, cv2.bitwise_not(hair_mask))
         debug_info["steps"].append("Combined masks: face AND skin_color AND NOT(exclusions) AND NOT(hair)")
 
-        # Step 6: Erode mask to stay away from boundaries (prevents edge artifacts)
-        erode_kernel = np.ones((5, 5), np.uint8)
+        # Step 6: Light erosion to clean up tiny noise (reduced to preserve valid skin)
+        erode_kernel = np.ones((3, 3), np.uint8)
         skin_mask = cv2.erode(skin_mask, erode_kernel, iterations=1)
-        debug_info["steps"].append("Eroded mask to stay away from hair/boundary edges")
+        debug_info["steps"].append("Light erosion to remove noise")
 
         # Step 7: Clean up with morphological operations
         kernel = np.ones((3, 3), np.uint8)
@@ -280,16 +280,24 @@ class SkinSegmenter:
         """
         Create mask for hair regions to exclude from skin detection.
 
-        Hair is typically characterized by:
-        - Low L value in LAB (darkness) - usually < 80
-        - Low saturation in HSV
-        - Different color properties than skin
-
-        This helps exclude hair strands that fall within the face oval,
-        especially on side-angle views where hairline overlaps with face mask.
+        IMPORTANT: Only detect hair at the BOUNDARIES/EDGES of the face mask,
+        not in the interior where pigmentation spots exist. This prevents
+        false positives where dark pigmentation spots are mistaken for hair.
         """
         h, w = image.shape[:2]
         hair_mask = np.zeros((h, w), dtype=np.uint8)
+
+        # Step 1: Create boundary region (only edges of face mask)
+        # Hair intrusion only happens at boundaries, not in face interior
+        kernel = np.ones((15, 15), np.uint8)
+        face_eroded = cv2.erode(face_mask, kernel, iterations=1)
+        boundary_region = cv2.bitwise_xor(face_mask, face_eroded)
+
+        # Step 2: Only analyze pixels in boundary region
+        boundary_pixels = boundary_region > 0
+
+        if np.sum(boundary_pixels) == 0:
+            return hair_mask
 
         # Convert to LAB color space
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
@@ -300,67 +308,39 @@ class SkinSegmenter:
         S_channel = hsv[:, :, 1].astype(np.float32)
         V_channel = hsv[:, :, 2].astype(np.float32)
 
-        # Only analyze within face region
+        # Calculate statistics from full face (not just boundary)
         face_pixels = face_mask > 0
-
         if np.sum(face_pixels) == 0:
             return hair_mask
 
-        # Calculate statistics for face region to determine adaptive thresholds
         face_L_values = L_channel[face_pixels]
         mean_L = np.mean(face_L_values)
         std_L = np.std(face_L_values)
 
-        # Hair detection criteria:
-        # 1. Very dark regions (L < 80 or significantly darker than mean)
-        dark_threshold = min(80, mean_L - 1.5 * std_L)
+        # Hair detection criteria - ONLY apply to boundary region:
+        # 1. Very dark regions (much stricter threshold)
+        dark_threshold = min(60, mean_L - 2.0 * std_L)  # Stricter: only VERY dark
         dark_regions = L_channel < dark_threshold
 
-        # 2. Also catch moderately dark with low saturation (gray/black hair)
-        # Hair often has lower saturation than skin
-        moderately_dark = L_channel < 100
-        low_saturation = S_channel < 60  # Low color saturation
-        gray_hair = moderately_dark & low_saturation
+        # 2. Gray/black hair with low saturation
+        very_dark = L_channel < 70  # Much stricter than before (was 100)
+        low_saturation = S_channel < 40  # Lower threshold (was 60)
+        gray_hair = very_dark & low_saturation
 
-        # 3. Very dark value in HSV (catches dark hair that might have odd LAB values)
-        very_dark_v = V_channel < 70
+        # 3. Extremely dark value in HSV
+        very_dark_v = V_channel < 50  # Stricter (was 70)
 
-        # 4. Position-aware hair detection for TOP region (forehead hairline)
-        # Be more aggressive at detecting hair at the top of the face mask
-        y_coords, x_coords = np.where(face_pixels)
-        if len(y_coords) > 0:
-            y_min_face = y_coords.min()
-            y_max_face = y_coords.max()
-            face_height_pixels = y_max_face - y_min_face
-
-            # Create mask for top 20% of face region
-            top_region_mask = np.zeros_like(face_pixels)
-            top_threshold_y = y_min_face + int(0.20 * face_height_pixels)
-
-            # Filter coordinates for top region
-            top_filter = y_coords < top_threshold_y
-            y_top = y_coords[top_filter]
-            x_top = x_coords[top_filter]
-            top_region_mask[y_top, x_top] = True
-
-            # In top region, use more lenient thresholds
-            # Detect anything darker than mean or with different color
-            top_region = top_region_mask & face_pixels
-            relaxed_dark = (L_channel < mean_L - 0.5 * std_L) & top_region
-        else:
-            relaxed_dark = np.zeros_like(face_pixels)
-
-        # Combine hair detection criteria
-        potential_hair = (dark_regions | gray_hair | very_dark_v | relaxed_dark) & face_pixels
+        # Combine criteria - ONLY in boundary region
+        potential_hair = (dark_regions | gray_hair | very_dark_v) & boundary_pixels
 
         # Create initial hair mask
         hair_mask[potential_hair] = 255
 
-        # Dilate hair regions slightly to catch edges
+        # Small dilation to catch immediate hair edges
         dilate_kernel = np.ones((3, 3), np.uint8)
-        hair_mask = cv2.dilate(hair_mask, dilate_kernel, iterations=2)
+        hair_mask = cv2.dilate(hair_mask, dilate_kernel, iterations=1)
 
-        # Keep only within face region
+        # Keep only within original face region
         hair_mask = cv2.bitwise_and(hair_mask, face_mask)
 
         return hair_mask
